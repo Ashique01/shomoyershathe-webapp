@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/env.d.ts","./src/main.tsx","./src/vite-env.d.ts","./src/components/healthtracker.tsx","./src/components/home.tsx","./src/components/medicinereminderform.tsx","./src/components/privateroute.tsx","./src/components/userlogin.tsx","./src/context/authcontext.tsx","./src/hooks/usespeechrecognition.ts","./src/types/global.d.ts"],"version":"5.8.3"}
