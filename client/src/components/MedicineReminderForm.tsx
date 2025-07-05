@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
-import { Bell, Trash2, Info } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+import toast, { Toaster } from "react-hot-toast";
+
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL}/reminders`;
 
 type Reminder = {
   _id?: string;
-  userId: string;
-  text: string;
+  medicineName: string;
   time: string;
+  userId?: string;
 };
 
 interface Props {
@@ -14,181 +17,261 @@ interface Props {
   isDarkMode: boolean;
 }
 
-export default function Reminder({ userId }: Props) {
-  const [text, setText] = useState("");
+export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
+  const [medicineName, setMedicineName] = useState("");
   const [time, setTime] = useState("");
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  const API_BASE = `${import.meta.env.VITE_API_BASE_URL}/reminders`;
-
-  const fetchReminders = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/${userId}`);
-      setReminders(res.data);
-    } catch (err) {
-      console.error("রিমাইন্ডার আনতে সমস্যা হয়েছে:", err);
-    }
-  };
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [reminderToDelete, setReminderToDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    if (userId) fetchReminders();
-  }, [userId]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (!text.trim()) {
-      setError("💊 ওষুধের নাম অবশ্যই লিখতে হবে।");
-      return;
-    }
-    if (!time.trim()) {
-      setError("⏰ ওষুধ খাওয়ার সময় দিন।");
-      return;
-    }
-
-    try {
-      const res = await axios.post(API_BASE, {
-        userId,
-        text,
-        time,
-      });
-      setReminders((prev) => [...prev, res.data]);
-      setText("");
-      setTime("");
-      setSuccess("✅ ওষুধের রিমাইন্ডার সফলভাবে সংরক্ষণ হয়েছে।");
-
-      scheduleNotification(res.data.text, res.data.time);
-    } catch (err) {
-      console.error("রিমাইন্ডার সংরক্ষণ করতে সমস্যা হয়েছে:", err);
-      setError("❌ রিমাইন্ডার সংরক্ষণ ব্যর্থ হয়েছে।");
-    }
-  };
-
-  const handleDelete = async (id?: string) => {
-    if (!id) return;
-    try {
-      await axios.delete(`${API_BASE}/entry/${id}`);
-      setReminders((prev) => prev.filter((r) => r._id !== id));
-    } catch (err) {
-      console.error("❌ রিমাইন্ডার ডিলিট করতে সমস্যা হয়েছে:", err);
-    }
-  };
-
-  const scheduleNotification = (text: string, time: string) => {
-    const [hour, minute] = time.split(":").map(Number);
-    const now = new Date();
-    const scheduled = new Date();
-    scheduled.setHours(hour);
-    scheduled.setMinutes(minute);
-    scheduled.setSeconds(0);
-
-    const delay = scheduled.getTime() - now.getTime();
-    if (delay <= 0) return;
-
-    setTimeout(() => {
-      if (Notification.permission === "granted") {
-        new Notification("💊 ওষুধ খাওয়ার সময়", {
-          body: text,
-          icon: "/icon-64.png",
-        });
-      }
-    }, delay);
-  };
-
-  useEffect(() => {
-    if (Notification.permission !== "granted") {
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
   }, []);
 
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchReminders = async () => {
+      setLoading(true);
+      try {
+        const res = await axios.get<Reminder[]>(`${API_BASE}?userId=${userId}`);
+        setReminders(res.data);
+        res.data.forEach((r) => scheduleNotification(r.medicineName, r.time));
+      } catch (err) {
+        console.error("Failed to fetch reminders:", err);
+        setError("ডেটা আনতে সমস্যা হয়েছে। সার্ভার চালু আছে কিনা দেখুন।");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReminders();
+  }, [userId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!medicineName.trim() || !time.trim()) {
+      setError("সব তথ্য পূরণ করুন।");
+      return;
+    }
+    setError("");
+
+    try {
+      if (editingId) {
+        const res = await axios.put<Reminder>(`${API_BASE}/${editingId}`, {
+          medicineName,
+          time,
+          userId,
+        });
+        setReminders((prev) =>
+          prev.map((r) => (r._id === editingId ? res.data : r))
+        );
+        toast.success("রিমাইন্ডার আপডেট হয়েছে।");
+        setEditingId(null);
+      } else {
+        const res = await axios.post<Reminder>(API_BASE, {
+          medicineName,
+          time,
+          userId,
+        });
+        setReminders((prev) => [...prev, res.data]);
+        scheduleNotification(medicineName, time);
+        toast.success("রিমাইন্ডার যোগ করা হয়েছে।");
+      }
+      setMedicineName("");
+      setTime("");
+    } catch (err) {
+      console.error("Failed to save reminder:", err);
+      setError("সেভ করতে সমস্যা হয়েছে।");
+      toast.error("রিমাইন্ডার সেভ করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  const confirmDelete = (id: string) => {
+    setReminderToDelete(id);
+    setShowConfirmModal(true);
+  };
+
+  const handleEdit = (reminder: Reminder) => {
+    setMedicineName(reminder.medicineName);
+    setTime(reminder.time);
+    setEditingId(reminder._id || null);
+    setError("");
+  };
+
+  const handleDelete = async () => {
+    if (!reminderToDelete) return;
+    setShowConfirmModal(false);
+    try {
+      await axios.delete(`${API_BASE}/${reminderToDelete}`);
+      setReminders((prev) => prev.filter((r) => r._id !== reminderToDelete));
+      toast.success("রিমাইন্ডার ডিলিট হয়েছে।");
+      setReminderToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete reminder:", err);
+      setError("ডিলিট করতে সমস্যা হয়েছে।");
+      toast.error("রিমাইন্ডার ডিলিট করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  const cancelDelete = () => {
+    setReminderToDelete(null);
+    setShowConfirmModal(false);
+  };
+
+  const scheduleNotification = (medicineName: string, time: string) => {
+    if (Notification.permission !== "granted") return;
+
+    const [hour, minute] = time.split(":").map(Number);
+    const now = new Date();
+    const reminderTime = new Date();
+    reminderTime.setHours(hour, minute, 0, 0);
+
+    let delay = reminderTime.getTime() - now.getTime();
+    if (delay < 0) delay += 24 * 60 * 60 * 1000;
+
+    setTimeout(() => {
+      new Notification("মেডিসিন সময়", {
+        body: `এখন ${medicineName} গ্রহণের সময়!`,
+        icon: "https://placehold.co/64x64/007bff/ffffff?text=💊",
+      });
+    }, delay);
+  };
+
   return (
-    <div className="max-w-3xl mx-auto p-6 font-inter text-gray-100">
-      {/* নির্দেশনা */}
-      <div className="bg-yellow-800 border border-yellow-500 text-yellow-100 rounded-xl p-4 mb-6 flex items-start gap-3">
-        <Info className="w-6 h-6 mt-1 text-yellow-300" />
-        <div>
-          <h2 className="text-lg font-bold mb-1">📌 নির্দেশাবলি</h2>
-          <ul className="list-disc list-inside text-sm">
-            <li>এই অ্যাপে শুধু <strong>ওষুধ খাওয়ার রিমাইন্ডার</strong> সংরক্ষণ করতে পারবেন।</li>
-            <li>নির্দিষ্ট সময়ে একটি <strong>নোটিফিকেশন</strong> পাবেন।</li>
-            <li>নিচের ফর্মে ওষুধের নাম ও সময় লিখে "রিমাইন্ডার সংরক্ষণ" চাপুন।</li>
+    <>
+      <Toaster position="top-right" reverseOrder={false} />
+      <div className="max-w-3xl mx-auto my-8 p-6 bg-gray-900 rounded-3xl shadow-2xl border border-gray-700 text-gray-200 font-inter">
+        <div className="mb-8 p-4 bg-yellow-900 border border-yellow-600 rounded-lg text-white">
+          <h2 className="text-2xl font-semibold mb-3">নির্দেশাবলী</h2>
+          <ul className="list-disc list-inside space-y-2">
+            <li>
+              💊 মেডিসিনের নাম লিখুন, যেমন: প্যারাসিটামল, আইবুপ্রোফেন ইত্যাদি।
+            </li>
+            <li>⏰ মেডিসিন খাওয়ার সঠিক সময় নির্বাচন করুন।</li>
+            <li>➕ রিমাইন্ডার যোগ করতে “যোগ করুন” বাটনে ক্লিক করুন।</li>
+            <li>✏️ রিমাইন্ডার আপডেট করতে তালিকা থেকে “এডিট” করুন।</li>
+            <li>🗑️ রিমাইন্ডার মুছে ফেলতে “ডিলিট” বাটনে ক্লিক করুন।</li>
+            <li>🔔 আপনার ডিভাইসে নোটিফিকেশন চালু আছে কিনা নিশ্চিত করুন।</li>
           </ul>
         </div>
-      </div>
 
-      {/* ফর্ম */}
-      <form onSubmit={handleSubmit} className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg mb-6">
-        <h2 className="text-2xl font-bold text-blue-400 mb-4">💊 ওষুধের রিমাইন্ডার দিন</h2>
-
-        {error && <p className="text-red-400 mb-4">{error}</p>}
-        {success && <p className="text-green-400 mb-4">{success}</p>}
-
-        <div className="mb-4">
-          <label htmlFor="text" className="block mb-1 text-gray-300 font-medium">
-            ওষুধের নাম
-          </label>
-          <input
-            id="text"
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="উদাহরণ: সকাল ৮টায় প্যারাসিটামল"
-            className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg"
-          />
-        </div>
-
-        <div className="mb-6">
-          <label htmlFor="time" className="block mb-1 text-gray-300 font-medium">
-            ওষুধ খাওয়ার সময়
-          </label>
-          <input
-            id="time"
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg"
-          />
-        </div>
-
-        <button
-          type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold"
+        <form
+          onSubmit={handleSubmit}
+          className="p-6 bg-gray-800 rounded-2xl shadow-lg border border-gray-700 mb-8"
         >
-          ✅ রিমাইন্ডার সংরক্ষণ করুন
-        </button>
-      </form>
+          <h2 className="text-3xl font-bold text-blue-400 text-center mb-6">
+            মেডিসিন রিমাইন্ডার যোগ করুন
+          </h2>
+          {error && (
+            <div className="flex items-center gap-2 text-red-400 mb-4">
+              <AlertCircle size={20} /> <span>{error}</span>
+            </div>
+          )}
 
-      {/* তালিকা */}
-      <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-        <h3 className="text-xl font-bold text-blue-400 mb-4">📋 ওষুধের রিমাইন্ডার তালিকা</h3>
-        {reminders.length === 0 ? (
-          <p className="text-gray-400 text-center">কোনো ওষুধের রিমাইন্ডার নেই।</p>
-        ) : (
-          <ul className="space-y-3">
-            {reminders.map((reminder) => (
-              <li
-                key={reminder._id}
-                className="bg-gray-700 p-4 rounded-lg flex justify-between items-center text-sm"
-              >
-                <div>
-                  <Bell className="inline w-4 h-4 mr-1 text-yellow-400" />
-                  <span>{reminder.text}</span> — <span className="text-blue-300">{reminder.time}</span>
-                </div>
-                <button
-                  onClick={() => handleDelete(reminder._id)}
-                  className="text-red-400 hover:text-red-500"
+          <div className="mb-4">
+            <label className="block mb-2">মেডিসিনের নাম</label>
+            <input
+              type="text"
+              value={medicineName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setMedicineName(e.target.value)
+              }
+              placeholder="যেমন: প্যারাসিটামল"
+              className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block mb-2">সময়</label>
+            <input
+              type="time"
+              value={time}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setTime(e.target.value)
+              }
+              className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 transition"
+          >
+            {editingId ? "আপডেট করুন" : "যোগ করুন"}
+          </button>
+        </form>
+
+        <div className="p-6 bg-gray-800 border border-gray-700 rounded-2xl">
+          <h3 className="text-2xl font-bold text-blue-400 mb-4">
+            সংরক্ষিত রিমাইন্ডার সমূহ
+          </h3>
+          {loading ? (
+            <p className="text-gray-400 text-center">তথ্য লোড হচ্ছে...</p>
+          ) : reminders.length === 0 ? (
+            <p className="text-gray-400 text-center">কোনো রিমাইন্ডার নেই।</p>
+          ) : (
+            <ul className="space-y-3">
+              {reminders.map((reminder) => (
+                <li
+                  key={reminder._id}
+                  className="flex justify-between items-center bg-gray-700 p-4 rounded-lg"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  <div>
+                    <strong className="text-blue-300">
+                      {reminder.medicineName}
+                    </strong>
+                    <p className="text-gray-400 text-sm">⏰ {reminder.time}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(reminder)}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-2 rounded"
+                    >
+                      এডিট
+                    </button>
+                    <button
+                      onClick={() => confirmDelete(reminder._id!)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded"
+                    >
+                      ডিলিট
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {showConfirmModal && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-600 shadow-xl text-center">
+              <h4 className="text-lg font-bold text-red-400 mb-4">
+                আপনি কি রিমাইন্ডারটি ডিলিট করতে চান?
+              </h4>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={handleDelete}
+                  className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded"
+                >
+                  হ্যাঁ, ডিলিট করুন
                 </button>
-              </li>
-            ))}
-          </ul>
+                <button
+                  onClick={cancelDelete}
+                  className="bg-gray-500 hover:bg-gray-600 text-white px-5 py-2 rounded"
+                >
+                  না
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

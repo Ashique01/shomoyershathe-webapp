@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
     const { userId } =  req.query;;
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const reminders = await Reminder.find({ userId: String(userId) }).sort({ time: 1 });
+    const reminders = await Reminder.find({ userId: String(userId) }).sort({ time: 1 }).lean();
     res.json(reminders);
   } catch (err) {
     console.error('GET /reminders/:userId error:', err);
