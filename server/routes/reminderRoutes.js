@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Reminder = require('../models/Reminder');
+const User = require('../models/User');
+const { sendFCMNotification } = require('../services/fcm');
 
 // GET reminders for a specific user
 router.get('/', async (req, res) => {
@@ -20,16 +22,37 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { userId, medicineName, time } = req.body;
+
+    // 🔒 Validate inputs
     if (!userId || !medicineName || !time) {
       return res.status(400).json({ error: 'userId, medicineName and time are required' });
     }
 
+    // 💾 Save reminder to DB
     const reminder = new Reminder({ userId, medicineName, time });
     await reminder.save();
+
+    // 🔔 Attempt to send push notification
+    try {
+      const user = await User.findById(userId);
+      if (user?.fcmToken && user.fcmToken.length > 100) {
+        await sendFCMNotification(
+          user.fcmToken,
+          '💊 মেডিসিন রিমাইন্ডার',
+          `মেডিসিন: ${medicineName}, সময়: ${time}`
+        );
+      } else {
+        console.warn('⚠️ No valid FCM token found for user:', userId);
+      }
+    } catch (notifyErr) {
+      console.warn('⚠️ Failed to send FCM notification:', notifyErr.message);
+    }
+
+    // ✅ Success response
     res.status(201).json(reminder);
   } catch (err) {
-    console.error('POST /reminders error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('❌ POST /reminders error:', err.message);
+    res.status(500).json({ error: 'Server error while saving reminder' });
   }
 });
 

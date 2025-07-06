@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
+import { requestPermissionAndGetToken, onForegroundMessage } from "../firebase-messaging";
 
-const API_BASE = `${import.meta.env.VITE_API_BASE_URL}/reminders`;
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL}`;
 
 type Reminder = {
   _id?: string;
@@ -31,7 +32,27 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
-  }, []);
+
+    requestPermissionAndGetToken().then((token) => {
+      if (token) {
+        axios
+          .post(`${API_BASE}/users/save-token`, { userId, token })
+          .catch((err) => {
+            console.error("Failed to save token:", err);
+          });
+      }
+    });
+
+    const unsubscribe = onForegroundMessage((payload) => {
+      const title = payload.notification?.title || "নতুন নোটিফিকেশন";
+      const body = payload.notification?.body || "";
+      toast(title + (body ? `: ${body}` : ""));
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -39,9 +60,8 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
     const fetchReminders = async () => {
       setLoading(true);
       try {
-        const res = await axios.get<Reminder[]>(`${API_BASE}?userId=${userId}`);
+        const res = await axios.get<Reminder[]>(`${API_BASE}/reminders?userId=${userId}`);
         setReminders(res.data);
-        res.data.forEach((r) => scheduleNotification(r.medicineName, r.time));
       } catch (err) {
         console.error("Failed to fetch reminders:", err);
         setError("ডেটা আনতে সমস্যা হয়েছে। সার্ভার চালু আছে কিনা দেখুন।");
@@ -63,7 +83,7 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
 
     try {
       if (editingId) {
-        const res = await axios.put<Reminder>(`${API_BASE}/${editingId}`, {
+        const res = await axios.put<Reminder>(`${API_BASE}/reminders/${editingId}`, {
           medicineName,
           time,
           userId,
@@ -74,13 +94,12 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
         toast.success("রিমাইন্ডার আপডেট হয়েছে।");
         setEditingId(null);
       } else {
-        const res = await axios.post<Reminder>(API_BASE, {
+        const res = await axios.post<Reminder>(`${API_BASE}/reminders`, {
           medicineName,
           time,
           userId,
         });
         setReminders((prev) => [...prev, res.data]);
-        scheduleNotification(medicineName, time);
         toast.success("রিমাইন্ডার যোগ করা হয়েছে।");
       }
       setMedicineName("");
@@ -108,7 +127,7 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
     if (!reminderToDelete) return;
     setShowConfirmModal(false);
     try {
-      await axios.delete(`${API_BASE}/${reminderToDelete}`);
+      await axios.delete(`${API_BASE}/reminders/${reminderToDelete}`);
       setReminders((prev) => prev.filter((r) => r._id !== reminderToDelete));
       toast.success("রিমাইন্ডার ডিলিট হয়েছে।");
       setReminderToDelete(null);
@@ -124,25 +143,6 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
     setShowConfirmModal(false);
   };
 
-  const scheduleNotification = (medicineName: string, time: string) => {
-    if (Notification.permission !== "granted") return;
-
-    const [hour, minute] = time.split(":").map(Number);
-    const now = new Date();
-    const reminderTime = new Date();
-    reminderTime.setHours(hour, minute, 0, 0);
-
-    let delay = reminderTime.getTime() - now.getTime();
-    if (delay < 0) delay += 24 * 60 * 60 * 1000;
-
-    setTimeout(() => {
-      new Notification("মেডিসিন সময়", {
-        body: `এখন ${medicineName} গ্রহণের সময়!`,
-        icon: "https://placehold.co/64x64/007bff/ffffff?text=💊",
-      });
-    }, delay);
-  };
-
   return (
     <>
       <Toaster position="top-right" reverseOrder={false} />
@@ -150,9 +150,7 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
         <div className="mb-8 p-4 bg-yellow-900 border border-yellow-600 rounded-lg text-white">
           <h2 className="text-2xl font-semibold mb-3">নির্দেশাবলী</h2>
           <ul className="list-disc list-inside space-y-2">
-            <li>
-              💊 মেডিসিনের নাম লিখুন, যেমন: প্যারাসিটামল, আইবুপ্রোফেন ইত্যাদি।
-            </li>
+            <li>💊 মেডিসিনের নাম লিখুন, যেমন: প্যারাসিটামল, আইবুপ্রোফেন ইত্যাদি।</li>
             <li>⏰ মেডিসিন খাওয়ার সঠিক সময় নির্বাচন করুন।</li>
             <li>➕ রিমাইন্ডার যোগ করতে “যোগ করুন” বাটনে ক্লিক করুন।</li>
             <li>✏️ রিমাইন্ডার আপডেট করতে তালিকা থেকে “এডিট” করুন।</li>
@@ -179,9 +177,7 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
             <input
               type="text"
               value={medicineName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setMedicineName(e.target.value)
-              }
+              onChange={(e) => setMedicineName(e.target.value)}
               placeholder="যেমন: প্যারাসিটামল"
               className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
             />
@@ -192,9 +188,7 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
             <input
               type="time"
               value={time}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setTime(e.target.value)
-              }
+              onChange={(e) => setTime(e.target.value)}
               className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
             />
           </div>
@@ -223,9 +217,7 @@ export default function MedicineReminderForm({ userId, isDarkMode }: Props) {
                   className="flex justify-between items-center bg-gray-700 p-4 rounded-lg"
                 >
                   <div>
-                    <strong className="text-blue-300">
-                      {reminder.medicineName}
-                    </strong>
+                    <strong className="text-blue-300">{reminder.medicineName}</strong>
                     <p className="text-gray-400 text-sm">⏰ {reminder.time}</p>
                   </div>
                   <div className="flex gap-2">

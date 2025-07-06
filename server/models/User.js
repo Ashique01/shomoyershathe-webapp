@@ -4,10 +4,14 @@ const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true,
-    unique: true, // ensures no duplicate usernames
+    unique: true,
     trim: true,
   },
-  name: String, // optional, you can add more fields later
+  name: String,
+  fcmToken: {
+    type: String,
+    default: null, // optional, used for push notifications
+  },
 });
 
 const User = mongoose.model("User", userSchema);

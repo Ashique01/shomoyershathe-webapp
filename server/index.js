@@ -14,11 +14,12 @@ app.use(express.json())
 const healthRoutes = require('./routes/healthRoutes')
 const reminderRoutes = require('./routes/reminderRoutes')
 const userRoutes = require('./routes/users');
+const notificationRoutes = require('./routes/notifications');
 
 app.use('/api/health', healthRoutes)
 app.use('/api/reminders', reminderRoutes)
 app.use('/api/users', userRoutes);
-
+app.use('/api/notifications', notificationRoutes);
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB connected'))

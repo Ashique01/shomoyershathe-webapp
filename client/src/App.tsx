@@ -5,6 +5,9 @@ import Home from "./components/Home";
 import MedicineReminderForm from "./components/MedicineReminderForm";
 import HealthTracker from "./components/HealthTracker";
 import Login from "./components/UserLogin"; // Assuming UserLogin is the correct path
+import { messaging } from "./firebase-messaging";
+import { getToken } from "firebase/messaging";
+import axios from "axios";
 
 // --- Placeholder Components (Updated for new design) ---
 // These placeholders are styled to adapt to the dark/light mode
@@ -69,6 +72,38 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem("somoyerTheme", JSON.stringify(isDarkMode));
   }, [isDarkMode]);
+
+   useEffect(() => {
+    const saveFcmToken = async () => {
+      if (!user || Notification.permission !== "granted") return;
+
+      try {
+        const fcmToken = await getToken(messaging, {
+          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY, 
+        });
+        console.log("🔥 FCM Token from getToken:", fcmToken);
+        if (fcmToken) {
+          const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/users/save-token`, {
+            userId: user._id,
+            token: fcmToken,
+          });
+          console.log("✅ FCM Token saved successfully");
+        } else {
+          console.warn("⚠️ FCM Token not generated");
+        }
+      } catch (err) {
+        console.error("🔥 Error saving FCM Token:", err);
+      }
+    };
+
+    if ("Notification" in window) {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          saveFcmToken();
+        }
+      });
+    }
+  }, [user]);
 
   const handleLogin = (userData: { _id: string; username: string; name?: string }) => {
     setUser(userData);

@@ -51,6 +51,33 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// 🔐 POST /api/users/save-token - Save FCM token
+router.post('/save-token', async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+
+    if (!userId || !token) {
+      return res.status(400).json({ error: 'User ID and token are required.' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { fcmToken: token },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    res.status(200).json({ message: 'Token saved successfully.' });
+  } catch (err) {
+    console.error('❌ POST /users/save-token error:', err.message);
+    res.status(500).json({ error: 'Failed to save token.' });
+  }
+});
+
+
 // 🧾 GET /api/users - Get all users (optional for debugging/admin)
 router.get('/', async (req, res) => {
   try {
