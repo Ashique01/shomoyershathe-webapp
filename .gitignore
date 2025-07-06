@@ -22,7 +22,6 @@ client/public/firebase-messaging-sw.js
 server/.env
 server/.env.local
 server/.env.*.local
-server/config/firebase-service-account.json
 
 # OS & Editor
 .DS_Store
