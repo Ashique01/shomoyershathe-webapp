@@ -33,10 +33,10 @@ const sendFCMNotification = async (token, title, body) => {
 
   try {
     const response = await admin.messaging().send(message);
-    console.log("✅ Notification sent:", response);
+    // console.log("✅ Notification sent:", response);
     return response;
   } catch (error) {
-    console.error("❌ FCM Error:", error);
+    // console.error("❌ FCM Error:", error);
     throw error;
   }
 };
