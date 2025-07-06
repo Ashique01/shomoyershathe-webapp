@@ -1,10 +1,19 @@
-// services/fcm.js
 const admin = require("firebase-admin");
-const fs = require("fs");
-const path = require("path");
 
-const serviceAccountPath = path.join(__dirname, "../config/firebase-service-account.json");
-const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+// Parse service account JSON from environment variable
+const serviceAccountJson = process.env.FIREBASE_ADMIN_JSON;
+
+if (!serviceAccountJson) {
+  throw new Error("FIREBASE_ADMIN_JSON environment variable not set");
+}
+
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(serviceAccountJson);
+} catch (err) {
+  console.error("Invalid FIREBASE_ADMIN_JSON JSON:", err);
+  throw err;
+}
 
 // Initialize Firebase Admin SDK (only once)
 if (!admin.apps.length) {
@@ -14,16 +23,12 @@ if (!admin.apps.length) {
 }
 
 const sendFCMNotification = async (token, title, body) => {
-  // 🔐 Token validation here
   if (!token || typeof token !== "string" || token.length < 100) {
     throw new Error("Invalid FCM token");
   }
   const message = {
     token,
-    notification: {
-      title,
-      body,
-    },
+    notification: { title, body },
   };
 
   try {
