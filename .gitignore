@@ -41,3 +41,4 @@ server/build/
 .cache/
 client/.cache/
 server/.cache/
+"server/config/firebase-service-account.json" 
