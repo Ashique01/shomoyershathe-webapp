@@ -19,15 +19,12 @@ Example: "A simple task manager app to add, update, and delete tasks efficiently
 ## 🔗 Live Demo
 [Check out the live demo here](https://shomoyer-sathe.netlify.app/)
 
-## 🖥️ Screenshots (Optional)
-*Add screenshots here to showcase your app’s UI.*
-
 ## 📂 Installation
 
 Follow these steps to run the project locally:
 
 ```bash
-git clone https://github.com/your-username/your-repo-name.git
-cd your-repo-name
+git clone https://github.com/ashique01/shomoyershathe-webapp.git
+cd shomoyershathe-webapp
 npm install
 npm start
